@@ -102,7 +102,7 @@ app.post("/login", async (req, res) => {
 
         res.status(200).json({
             message: "Login successful",
-            token: `Bearer ${token}` // Send token to client
+            token: `${token}` // Send token to client
         });
     } catch (error) {
         console.error("Login error:", error);
@@ -182,11 +182,11 @@ app.post("/withdraw", authenticateUser, async (req, res) => {
         user.balance -= amount;
         await user.save();
 
-        // Record transaction
+        // Record transaction with negative amount for withdrawals.
         const transaction = new Transaction({
             userId: user._id,
             type: 'withdraw',
-            amount
+            amount: -Math.abs(amount) // store the amount as negative
         });
         await transaction.save();
 
@@ -204,9 +204,10 @@ app.post("/withdraw", authenticateUser, async (req, res) => {
     }
 });
 
+
 // Improved transfer route with better error handling and transaction recording
 app.post("/transfer", authenticateUser, async (req, res) => {
-    const { recipientUserId, amount } = req.body;
+    const { recipientUserId,beneficiary1, amount } = req.body;
     if (!amount || amount <= 0 || !recipientUserId) {
         return res.status(400).json({ message: "Invalid transfer details" });
     }
@@ -214,9 +215,13 @@ app.post("/transfer", authenticateUser, async (req, res) => {
     try {
         const sender = await User.findOne({ userId: req.user.userId });
         const recipient = await User.findOne({ userId: recipientUserId });
-
+        
         if (!sender || !recipient) {
             return res.status(404).json({ message: "Sender or recipient not found" });
+        }
+
+        if(recipient.accountNumber!=beneficiary1){
+            return res.status(404).json({ message: "Enter the correct account number" });
         }
 
         if (sender.balance < amount) {
@@ -277,5 +282,29 @@ app.get("/transactions", authenticateUser, async (req, res) => {
     } catch (error) {
         console.error("Transaction history error:", error);
         res.status(500).json({ message: "Error fetching transactions", error: error.message });
+    }
+});
+
+app.get("/users", authenticateUser, async (req, res) => {
+    try {
+        // Find the user by userId
+        const user = await User.findOne({ userId: req.user.userId })
+            .populate('transactions'); // Populate transactions if needed (optional)
+
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Respond with the user's profile data
+        res.status(200).json({
+            fullName: user.fullname,
+            email: user.email,
+            phone: user.phoneNumber || 'N/A',
+            accountNumber: user.accountNumber || 'N/A',
+            branch: user.branch || 'N/A',
+            balance: user.balance.toFixed(2), // Assuming balance is a number
+            transactions: user.transactions // If you want to include transaction history, optional
+        });
+    } catch (error) {
+        console.error("User data fetch error:", error);
+        res.status(500).json({ message: "Error fetching user data", error: error.message });
     }
 });
